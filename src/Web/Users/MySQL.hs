@@ -1,8 +1,8 @@
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE CPP #-}
 module Web.Users.MySQL () where
 
@@ -11,43 +11,46 @@ import Data.Int(Int64)
 import Web.Users.Types
 import Database.MySQL.Base
 
-instance UserStorageBackend MySQLConn where
-    type UserId MySQLConn = Int64
+newtype Conn a = Conn { getConn :: a } deriving (Eq,Show)
 
-    initUserBackend conn =
+instance UserStorageBackend (Conn MySQLConn) where
+
+    type UserId (Conn MySQLConn) = Int64
+
+    initUserBackend (Conn conn) =
         undefined
-    destroyUserBackend conn =
+    destroyUserBackend (Conn conn) =
         undefined
-    housekeepBackend conn =
+    housekeepBackend (Conn conn) =
         undefined
     -- | Retrieve a user id from the database
-    getUserIdByName conn username =
+    getUserIdByName (Conn conn) username =
         undefined
-    listUsers conn mLimit sortField =
+    listUsers (Conn conn) mLimit sortField =
         undefined
-    countUsers conn =
+    countUsers (Conn conn) =
         undefined
-    createUser conn user =
+    createUser (Conn conn) user =
         undefined
-    updateUser conn userId updateFun =
+    updateUser (Conn conn) userId updateFun =
         undefined
-    deleteUser conn userId =
+    deleteUser (Conn conn) userId =
         undefined
-    createSession conn userId sessionTtl =
+    createSession (Conn conn) userId sessionTtl =
         undefined
-    withAuthUser conn username authFn action =
+    withAuthUser (Conn conn) username authFn action =
         undefined
-    verifySession conn (SessionId sessionId) extendTime =
+    verifySession (Conn conn) (SessionId sessionId) extendTime =
         undefined
-    destroySession conn (SessionId sessionId) = 
+    destroySession (Conn conn) (SessionId sessionId) = 
         undefined
-    requestPasswordReset conn userId timeToLive =
+    requestPasswordReset (Conn conn) userId timeToLive =
         undefined
-    requestActivationToken conn userId timeToLive =
+    requestActivationToken (Conn conn) userId timeToLive =
         undefined
-    activateUser conn (ActivationToken token) =
+    activateUser (Conn conn) (ActivationToken token) =
         undefined
-    verifyPasswordResetToken conn (PasswordResetToken token) =
+    verifyPasswordResetToken (Conn conn) (PasswordResetToken token) =
         undefined
-    applyNewPassword conn (PasswordResetToken token) password =
+    applyNewPassword (Conn conn) (PasswordResetToken token) password =
         undefined
