@@ -26,6 +26,7 @@ createUsersTable =
         \ CONSTRAINT \"l_pk\" PRIMARY KEY (lid)\
         \ );"
 
+-- http://mysqlserverteam.com/storing-uuid-values-in-mysql-tables/
 createUserTokenTable :: Query
 createUserTokenTable =
     "CREATE TABLE IF NOT EXISTS login_token (\
