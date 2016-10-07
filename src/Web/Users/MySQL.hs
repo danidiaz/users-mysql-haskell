@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleInstances #-}
-module Web.Users.MySQL () where
+module Web.Users.MySQL (Conn(..)) where
 
 import Data.Int(Int64)
 
