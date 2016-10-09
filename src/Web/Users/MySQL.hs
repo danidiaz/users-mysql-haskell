@@ -3,14 +3,17 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleInstances #-}
-module Web.Users.MySQL (Conn(..)) where
+module Web.Users.MySQL (Backend,backend) where
 
 import Data.Int(Int64)
 
 import Web.Users.Types
 import Database.MySQL.Base
 
-newtype Conn a = Conn { getConn :: a } deriving (Eq,Show)
+newtype Backend = Backend { getConn :: MySQLConn }
+
+backend :: MySQLConn -> Backend
+backend = Backend
 
 -- http://dev.mysql.com/doc/refman/5.7/en/create-table.html
 
@@ -40,44 +43,44 @@ createUserTokenTable =
         \CONSTRAINT \"lt_lid_fk\" FOREIGN KEY (lid) REFERENCES login ON DELETE CASCADE\
         \);"
 
-instance UserStorageBackend (Conn MySQLConn) where
+instance UserStorageBackend Backend where
 
-    type UserId (Conn MySQLConn) = Int64
+    type UserId Backend = Int64
 
-    initUserBackend (Conn conn) =
+    initUserBackend (Backend conn) =
         undefined
-    destroyUserBackend (Conn conn) =
+    destroyUserBackend (Backend conn) =
         undefined
-    housekeepBackend (Conn conn) =
+    housekeepBackend (Backend conn) =
         undefined
     -- | Retrieve a user id from the database
-    getUserIdByName (Conn conn) username =
+    getUserIdByName (Backend conn) username =
         undefined
-    listUsers (Conn conn) mLimit sortField =
+    listUsers (Backend conn) mLimit sortField =
         undefined
-    countUsers (Conn conn) =
+    countUsers (Backend conn) =
         undefined
-    createUser (Conn conn) user =
+    createUser (Backend conn) user =
         undefined
-    updateUser (Conn conn) userId updateFun =
+    updateUser (Backend conn) userId updateFun =
         undefined
-    deleteUser (Conn conn) userId =
+    deleteUser (Backend conn) userId =
         undefined
-    createSession (Conn conn) userId sessionTtl =
+    createSession (Backend conn) userId sessionTtl =
         undefined
-    withAuthUser (Conn conn) username authFn action =
+    withAuthUser (Backend conn) username authFn action =
         undefined
-    verifySession (Conn conn) (SessionId sessionId) extendTime =
+    verifySession (Backend conn) (SessionId sessionId) extendTime =
         undefined
-    destroySession (Conn conn) (SessionId sessionId) = 
+    destroySession (Backend conn) (SessionId sessionId) = 
         undefined
-    requestPasswordReset (Conn conn) userId timeToLive =
+    requestPasswordReset (Backend conn) userId timeToLive =
         undefined
-    requestActivationToken (Conn conn) userId timeToLive =
+    requestActivationToken (Backend conn) userId timeToLive =
         undefined
-    activateUser (Conn conn) (ActivationToken token) =
+    activateUser (Backend conn) (ActivationToken token) =
         undefined
-    verifyPasswordResetToken (Conn conn) (PasswordResetToken token) =
+    verifyPasswordResetToken (Backend conn) (PasswordResetToken token) =
         undefined
-    applyNewPassword (Conn conn) (PasswordResetToken token) password =
+    applyNewPassword (Backend conn) (PasswordResetToken token) password =
         undefined

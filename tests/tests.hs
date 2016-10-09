@@ -21,16 +21,16 @@ test_mysql_database = "TEST_MYSQL_DATABASE"
 test_mysql_user = "TEST_MYSQL_USER"
 test_mysql_password = "TEST_MYSQL_PASSWORD"
 
-withConn :: (Conn MySQLConn -> IO a) -> IO a
+withConn :: (Backend -> IO a) -> IO a
 withConn f = do
     connInfo <- ConnectInfo <$>                 getEnv test_mysql_host
                             <*> (read       <$> getEnv test_mysql_port)
                             <*> (Char8.pack <$> getEnv test_mysql_database)
                             <*> (Char8.pack <$> getEnv test_mysql_user)
                             <*> (Char8.pack <$> getEnv test_mysql_password)
-    bracket (Conn <$> connect connInfo) 
-            (close . getConn) 
-            f
+    bracket (connect connInfo) 
+            close 
+            (f . backend)
 
 main :: IO ()
 main = defaultMain tests
