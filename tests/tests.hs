@@ -14,6 +14,8 @@ import Web.Users.MySQL
 import Test.Tasty
 import Test.Tasty.HUnit
 
+-- https://github.com/agrafix/users/blob/master/users-test/src/Web/Users/TestSpec.hs
+
 test_mysql_host,test_mysql_port,test_mysql_database,test_mysql_user,test_mysql_password :: String
 test_mysql_host = "TEST_MYSQL_HOST"
 test_mysql_port = "TEST_MYSQL_PORT"

@@ -15,6 +15,7 @@ newtype Backend = Backend { getConn :: MySQLConn }
 backend :: MySQLConn -> Backend
 backend = Backend
 
+-- https://github.com/agrafix/users/blob/master/users-postgresql-simple/src/Web/Users/Postgresql.hs
 -- http://dev.mysql.com/doc/refman/5.7/en/create-table.html
 
 createUsersTable :: Query
