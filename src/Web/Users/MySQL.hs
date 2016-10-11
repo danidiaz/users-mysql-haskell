@@ -9,6 +9,8 @@ import Data.Int(Int64)
 
 import Web.Users.Types
 import Database.MySQL.Base
+import System.IO.Streams
+import System.IO.Streams.List
 
 newtype Backend = Backend { getConn :: MySQLConn }
 
@@ -48,19 +50,26 @@ instance UserStorageBackend Backend where
 
     type UserId Backend = Int64
 
-    initUserBackend (Backend conn) =
-        undefined
-    destroyUserBackend (Backend conn) =
-        undefined
-    housekeepBackend (Backend conn) =
-        undefined
+    initUserBackend (Backend conn) = do
+        _ <- execute_ conn createUsersTable
+        _ <- execute_ conn createUserTokenTable
+        return ()
+    destroyUserBackend (Backend conn) = do
+        _ <- execute_ conn "drop table login_token;"
+        _ <- execute_ conn "drop table login;"
+        return ()
+    housekeepBackend (Backend conn) = do
+        _ <- execute_ conn "DELETE FROM login_token WHERE valid_until < NOW();"
+        return ()
     -- | Retrieve a user id from the database
     getUserIdByName (Backend conn) username =
         undefined
     listUsers (Backend conn) mLimit sortField =
         undefined
-    countUsers (Backend conn) =
-        undefined
+    countUsers (Backend conn) = do
+        (_,ios) <- query_ conn "SELECT COUNT(lid) FROM login;"
+        [MySQLInt64 count] : _ <- System.IO.Streams.List.toList ios
+        return count
     createUser (Backend conn) user =
         undefined
     updateUser (Backend conn) userId updateFun =
