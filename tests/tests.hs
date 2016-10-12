@@ -9,6 +9,7 @@ import Control.Exception
 import System.Environment
 
 import Database.MySQL.Base
+import Web.Users.Types
 import Web.Users.MySQL
 
 import Test.Tasty
@@ -30,6 +31,11 @@ withConn f = do
                             <*> (Char8.pack <$> getEnv test_mysql_database)
                             <*> (Char8.pack <$> getEnv test_mysql_user)
                             <*> (Char8.pack <$> getEnv test_mysql_password)
+    getEnv test_mysql_host >>= print
+    getEnv test_mysql_port >>= print
+    getEnv test_mysql_database >>= print
+    getEnv test_mysql_user >>= print
+    getEnv test_mysql_password >>= print
     bracket (connect connInfo) 
             close 
             (f . backend)
@@ -41,5 +47,13 @@ tests :: TestTree
 tests = 
     testGroup "Tests" 
     [
+        createAndDelete
     ]
+
+createAndDelete :: TestTree
+createAndDelete = testCase "createAndDelete" $ withConn $ \backend' -> do
+    initUserBackend backend' 
+    count <- countUsers backend'
+    destroyUserBackend backend'
+    assertEqual "user count" count 0
 
