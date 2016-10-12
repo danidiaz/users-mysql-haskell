@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Web.Users.MySQL (Backend,backend) where
 
+import Data.Maybe
 import Data.Int(Int64)
 
 import Web.Users.Types
@@ -63,8 +64,8 @@ instance UserStorageBackend Backend where
     housekeepBackend (Backend conn) = do
         _ <- execute_ conn "DELETE FROM login_token WHERE valid_until < NOW();"
         return ()
-    -- | Retrieve a user id from the database
     getUserIdByName (Backend conn) username =
+        _ <- execute conn "SELECT lid FROM login WHERE (username = ? OR email = ?) LIMIT 1;" -- TODO
         undefined
     listUsers (Backend conn) mLimit sortField =
         undefined
