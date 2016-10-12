@@ -31,11 +31,6 @@ withConn f = do
                             <*> (Char8.pack <$> getEnv test_mysql_database)
                             <*> (Char8.pack <$> getEnv test_mysql_user)
                             <*> (Char8.pack <$> getEnv test_mysql_password)
-    getEnv test_mysql_host >>= print
-    getEnv test_mysql_port >>= print
-    getEnv test_mysql_database >>= print
-    getEnv test_mysql_user >>= print
-    getEnv test_mysql_password >>= print
     bracket (connect connInfo) 
             close 
             (f . backend)
