@@ -18,6 +18,7 @@ backend :: MySQLConn -> Backend
 backend = Backend
 
 -- https://github.com/agrafix/users/blob/master/users-postgresql-simple/src/Web/Users/Postgresql.hs
+-- http://hackage.haskell.org/package/mysql-haskell-0.5.0.0/docs/Database-MySQL-Base.html
 -- http://dev.mysql.com/doc/refman/5.7/en/create-table.html
 
 createUsersTable :: Query
@@ -67,8 +68,8 @@ instance UserStorageBackend Backend where
     listUsers (Backend conn) mLimit sortField =
         undefined
     countUsers (Backend conn) = do
-        (_,ios) <- query_ conn "SELECT COUNT(lid) FROM login;"
-        [MySQLInt64 count] : _ <- System.IO.Streams.List.toList ios
+        (_,ist) <- query_ conn "SELECT COUNT(lid) FROM login;"
+        [MySQLInt64 count] : _ <- System.IO.Streams.List.toList ist
         return count
     createUser (Backend conn) user =
         undefined
