@@ -30,7 +30,7 @@ createUsersTable =
         \ password        VARCHAR(255)   NOT NULL,\
         \ email           VARCHAR(64)   NOT NULL UNIQUE,\
         \ is_active       BOOLEAN NOT NULL DEFAULT FALSE,\
-        \ CONSTRAINT \"l_pk\" PRIMARY KEY (lid)\
+        \ CONSTRAINT l_pk PRIMARY KEY (lid)\
         \ );"
 
 -- http://mysqlserverteam.com/storing-uuid-values-in-mysql-tables/
@@ -38,13 +38,13 @@ createUserTokenTable :: Query
 createUserTokenTable =
     "CREATE TABLE IF NOT EXISTS login_token (\
         \ltid             BIGINT NOT NULL AUTO_INCREMENT,\
-        \token            UUID UNIQUE,\
+        \token            VARCHAR(36) UNIQUE,\
         \token_type       VARCHAR(64) NOT NULL,\
         \lid              INTEGER NOT NULL,\
         \created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,\
         \valid_until      TIMESTAMP NOT NULL,\
-        \CONSTRAINT \"lt_pk\" PRIMARY KEY (ltid),\
-        \CONSTRAINT \"lt_lid_fk\" FOREIGN KEY (lid) REFERENCES login ON DELETE CASCADE\
+        \CONSTRAINT lt_pk PRIMARY KEY (ltid),\
+        \CONSTRAINT lt_lid_fk FOREIGN KEY (lid) REFERENCES login ON DELETE CASCADE\
         \);"
 
 instance UserStorageBackend Backend where
