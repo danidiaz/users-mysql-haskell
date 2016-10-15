@@ -25,6 +25,8 @@ backend = Backend
 -- http://hackage.haskell.org/package/mysql-haskell-0.5.0.0/docs/Database-MySQL-Base.html
 -- http://dev.mysql.com/doc/refman/5.7/en/create-table.html
 
+-- NOTE: The implementation has lots of incomplete patterns.
+
 createUsersTable :: Query
 createUsersTable = 
     "CREATE TABLE IF NOT EXISTS login (\
