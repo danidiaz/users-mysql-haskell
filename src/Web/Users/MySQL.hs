@@ -3,11 +3,14 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 module Web.Users.MySQL (Backend,backend) where
 
 import Data.Maybe
+import Data.String
+import Data.List
+import qualified Data.Text as Text
 import Data.Int(Int64)
-import Control.Exception
 import Web.Users.Types
 import Database.MySQL.Base
 import System.IO.Streams
@@ -71,9 +74,7 @@ instance UserStorageBackend Backend where
         case m of
             Nothing                 -> return Nothing
             Just (MySQLInt64 uid:_) -> return (Just uid)
-            Just _                  -> throwIO (userError "error getting lid")
-    listUsers (Backend conn) mLimit sortField =
-        undefined
+    listUsers = listUsers'
     countUsers (Backend conn) = do
         (_,ist) <- query_ conn "SELECT COUNT(lid) FROM login;"
         [MySQLInt64 count] : _ <- System.IO.Streams.List.toList ist
@@ -102,3 +103,39 @@ instance UserStorageBackend Backend where
         undefined
     applyNewPassword (Backend conn) (PasswordResetToken token) password =
         undefined
+
+convertUserTuple :: (Text.Text, Password, Text.Text, Bool) -> User
+convertUserTuple (username, password, email, isActive) =
+    User username email password isActive
+
+listUsers' :: Backend -> Maybe (Int64, Int64) -> SortBy UserField -> IO [(UserId Backend, User)]
+listUsers' (Backend conn) mLimit sortField = do
+    -- NOTE: the mysql-haskell Query type does not have a Monoid instance.
+    -- NOTE: booleans are mapped as TINYINT.
+    (_,ist) <- query_ conn (fromString (intercalate " " [baseQuery,getOrderBy sortField,limitPart mLimit]))
+    resultSet <- System.IO.Streams.List.toList ist
+    return $ Prelude.map convertUser resultSet
+    where
+    baseQuery = "SELECT lid, username, email, is_active FROM login"
+    limitPart = \case
+        Nothing             -> ""
+        Just (start, count) -> "LIMIT " ++ show count ++ " OFFSET " ++ show start 
+    convertUser [MySQLInt64 lid, MySQLText username, MySQLText email, MySQLInt8 isActive] =
+        (lid, convertUserTuple (username, PasswordHidden, email, isActive /= 0))
+
+getOrderBy :: SortBy UserField -> String
+getOrderBy sb =
+    "ORDER BY " ++
+    case sb of
+      SortAsc t -> getSqlField t  ++ " ASC"
+      SortDesc t -> getSqlField t ++ " DESC"
+
+getSqlField :: UserField -> String
+getSqlField userField =
+    case userField of
+      UserFieldId -> "lid"
+      UserFieldActive -> "is_active"
+      UserFieldEmail -> "email"
+      UserFieldName -> "username"
+      UserFieldPassword -> "password"
+
