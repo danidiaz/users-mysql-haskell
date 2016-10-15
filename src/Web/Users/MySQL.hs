@@ -7,7 +7,7 @@ module Web.Users.MySQL (Backend,backend) where
 
 import Data.Maybe
 import Data.Int(Int64)
-
+import Control.Exception
 import Web.Users.Types
 import Database.MySQL.Base
 import System.IO.Streams
@@ -64,9 +64,14 @@ instance UserStorageBackend Backend where
     housekeepBackend (Backend conn) = do
         _ <- execute_ conn "DELETE FROM login_token WHERE valid_until < NOW();"
         return ()
-    getUserIdByName (Backend conn) username =
-        _ <- execute conn "SELECT lid FROM login WHERE (username = ? OR email = ?) LIMIT 1;" -- TODO
-        undefined
+    getUserIdByName (Backend conn) username = do
+        (_,ist) <- query conn "SELECT lid FROM login WHERE (username = ? OR email = ?) LIMIT 1;" 
+                              [MySQLText username,MySQLText username]
+        m <- listToMaybe <$> System.IO.Streams.List.toList ist
+        case m of
+            Nothing                 -> return Nothing
+            Just (MySQLInt64 uid:_) -> return (Just uid)
+            Just _                  -> throwIO (userError "error getting lid")
     listUsers (Backend conn) mLimit sortField =
         undefined
     countUsers (Backend conn) = do
