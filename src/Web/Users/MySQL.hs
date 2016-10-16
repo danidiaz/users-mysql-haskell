@@ -81,8 +81,10 @@ instance UserStorageBackend Backend where
         (_,ist) <- query_ conn "SELECT COUNT(lid) FROM login;"
         [MySQLInt64 count] : _ <- System.IO.Streams.List.toList ist
         return count
-    createUser (Backend conn) user =
-        undefined
+    createUser b user =
+        case u_password user of
+            PasswordHash p -> createUser' b user p
+            _              -> return $ Left InvalidPassword
     updateUser (Backend conn) userId updateFun =
         undefined
     deleteUser (Backend conn) userId =
@@ -141,3 +143,18 @@ getSqlField userField =
       UserFieldName -> "username"
       UserFieldPassword -> "password"
 
+createUser' :: Backend -> User -> Text.Text -> IO (Either CreateUserError Int64)
+createUser' (Backend conn) user password = do
+        (_,ist1) <- query conn "SELECT COUNT(lid) FROM login WHERE lower(email) = lower(?) LIMIT 1;" 
+                               [MySQLText $ u_email user]
+        [MySQLInt64 emailCount] : _ <- System.IO.Streams.List.toList ist1
+        (_,ist2) <- query conn "SELECT COUNT(lid) FROM login WHERE username = ? LIMIT 1;" 
+                               [MySQLText $ u_name user]
+        [MySQLInt64 loginCount] : _ <- System.IO.Streams.List.toList ist2
+        case (emailCount == 1,loginCount == 1) of
+            (True, True)   -> return $ Left UsernameAndEmailAlreadyTaken
+            (True, False)  -> return $ Left EmailAlreadyTaken
+            (False, True)  -> return $ Left UsernameAlreadyTaken
+            -- http://stackoverflow.com/questions/17112852/get-the-new-record-primary-key-id-from-mysql-insert-query
+            -- http://dev.mysql.com/doc/refman/5.7/en/getting-unique-id.html
+            (False, False) -> undefined
