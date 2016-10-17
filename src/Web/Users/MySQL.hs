@@ -70,16 +70,14 @@ instance UserStorageBackend Backend where
         _ <- execute_ conn "DELETE FROM login_token WHERE valid_until < NOW();"
         return ()
     getUserIdByName (Backend conn) username = do
-        (_,ist) <- query conn "SELECT lid FROM login WHERE (username = ? OR email = ?) LIMIT 1;" 
-                              [MySQLText username,MySQLText username]
-        m <- listToMaybe <$> System.IO.Streams.List.toList ist
-        case m of
+        rs <- drain $ query conn "SELECT lid FROM login WHERE (username = ? OR email = ?) LIMIT 1;" 
+                                 [MySQLText username,MySQLText username]
+        case listToMaybe rs of
             Nothing                 -> return Nothing
             Just (MySQLInt64 uid:_) -> return (Just uid)
     listUsers = listUsers'
     countUsers (Backend conn) = do
-        (_,ist) <- query_ conn "SELECT COUNT(lid) FROM login;"
-        [MySQLInt64 count] : _ <- System.IO.Streams.List.toList ist
+        [MySQLInt64 count] : _ <- drain $ query_ conn "SELECT COUNT(lid) FROM login;"
         return count
     createUser b user =
         case u_password user of
@@ -116,9 +114,8 @@ listUsers' :: Backend -> Maybe (Int64, Int64) -> SortBy UserField -> IO [(UserId
 listUsers' (Backend conn) mLimit sortField = do
     -- NOTE: the mysql-haskell Query type does not have a Monoid instance.
     -- NOTE: booleans are mapped as TINYINT.
-    (_,ist) <- query_ conn (fromString (intercalate " " [baseQuery,getOrderBy sortField,limitPart mLimit]))
-    resultSet <- System.IO.Streams.List.toList ist
-    return $ Prelude.map convertUser resultSet
+    rs <- drain $ query_ conn (fromString (intercalate " " [baseQuery,getOrderBy sortField,limitPart mLimit]))
+    return $ Prelude.map convertUser rs
     where
     baseQuery = "SELECT lid, username, email, is_active FROM login"
     limitPart = \case
@@ -145,16 +142,26 @@ getSqlField userField =
 
 createUser' :: Backend -> User -> Text.Text -> IO (Either CreateUserError Int64)
 createUser' (Backend conn) user password = do
-        (_,ist1) <- query conn "SELECT COUNT(lid) FROM login WHERE lower(email) = lower(?) LIMIT 1;" 
-                               [MySQLText $ u_email user]
-        [MySQLInt64 emailCount] : _ <- System.IO.Streams.List.toList ist1
-        (_,ist2) <- query conn "SELECT COUNT(lid) FROM login WHERE username = ? LIMIT 1;" 
-                               [MySQLText $ u_name user]
-        [MySQLInt64 loginCount] : _ <- System.IO.Streams.List.toList ist2
+        [MySQLInt64 emailCount] : _ <- drain $ query_ conn "SELECT COUNT(lid) FROM login WHERE lower(email) = lower(?) LIMIT 1;" 
+        [MySQLInt64 loginCount] : _ <- drain $ query conn "SELECT COUNT(lid) FROM login WHERE username = ? LIMIT 1;" 
+                                                          [MySQLText $ u_name user]
         case (emailCount == 1,loginCount == 1) of
             (True, True)   -> return $ Left UsernameAndEmailAlreadyTaken
             (True, False)  -> return $ Left EmailAlreadyTaken
             (False, True)  -> return $ Left UsernameAlreadyTaken
             -- http://stackoverflow.com/questions/17112852/get-the-new-record-primary-key-id-from-mysql-insert-query
             -- http://dev.mysql.com/doc/refman/5.7/en/getting-unique-id.html
-            (False, False) -> undefined
+            (False, False) -> do
+                _ <- execute conn "INSERT INTO login (username, password, email, is_active) VALUES (?, ?, ?, ?)"
+                                  [ MySQLText $ u_name user
+                                  , MySQLText $ password
+                                  , MySQLText $ u_email user
+                                  , MySQLInt8 $ if u_active user then 1 else 0
+                                  ]
+                [MySQLInt64 u_id] : _ <- drain $ query_ conn "SELECT LAST_INSERT_ID()"
+                return $ Right u_id
+
+drain :: IO ([ColumnDef], InputStream [MySQLValue]) -> IO [[MySQLValue]]
+drain action = do
+    (_,ist) <- action
+    System.IO.Streams.List.toList ist
