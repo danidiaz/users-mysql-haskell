@@ -24,6 +24,7 @@ test_mysql_database = "TEST_MYSQL_DATABASE"
 test_mysql_user = "TEST_MYSQL_USER"
 test_mysql_password = "TEST_MYSQL_PASSWORD"
 
+-- https://dev.mysql.com/doc/refman/5.5/en/implicit-commit.html
 withConn :: (Backend -> IO a) -> IO a
 withConn f = do
     connInfo <- ConnectInfo <$>                 getEnv test_mysql_host
@@ -35,6 +36,12 @@ withConn f = do
             close 
             (f . backend)
 
+withDb :: (Backend -> IO a) -> IO a
+withDb f = withConn $ \b -> do initUserBackend b
+                               r <- f b
+                               destroyUserBackend b
+                               return r
+
 main :: IO ()
 main = defaultMain tests
 
@@ -42,13 +49,14 @@ tests :: TestTree
 tests = 
     testGroup "Tests" 
     [
-        createAndDelete
+        testCreateAndDelete
+    ,   testCountUsers
     ]
 
-createAndDelete :: TestTree
-createAndDelete = testCase "createAndDelete" $ withConn $ \backend' -> do
-    initUserBackend backend' 
-    count <- countUsers backend'
-    destroyUserBackend backend'
-    assertEqual "user count" count 0
+testCreateAndDelete:: TestTree
+testCreateAndDelete = testCase "createAndDelete" $ withDb $ \_ -> do return ()
 
+testCountUsers :: TestTree
+testCountUsers = testCase "countUsers" $ withDb $ \b -> do
+    count <- countUsers b
+    assertEqual "user count" count 0
