@@ -1,6 +1,6 @@
 name:                users-mysql-haskell
 version:             0.5.0.0
-synopsis:            A MySQL backend for the users package
+synopsis:            A mysql-haskell backend for the users library.
 -- description:         
 license:             BSD3
 license-file:        LICENSE

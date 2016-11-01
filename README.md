@@ -1,6 +1,6 @@
 # users-mysql-haskell
 
-This library is a backend driver for the "users" library, using mysql-haskell. 
+This library is a mysql-haskell backend for the "users" library. 
 
 # Differences with other "users" backends
 
