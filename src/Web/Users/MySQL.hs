@@ -11,7 +11,8 @@ import Data.List
 import qualified Data.Text as Text
 import Data.Int(Int64)
 import Control.Monad
-import Control.Monad.Except
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Except
 import Web.Users.Types
 import Database.MySQL.Base
 import System.IO.Streams
@@ -85,12 +86,16 @@ instance UserStorageBackend Backend where
         case u_password user of
             PasswordHash p -> createUser' b user p
             _              -> return $ Left InvalidPassword
-    updateUser b@(Backend conn) userId updateFun =
+    updateUser b userId updateFun =
         do mUser <- getUserById b userId
            case mUser of
              Nothing ->
                  return $ Left UserDoesntExist
-             Just origUser -> undefined
+             Just origUser -> 
+                 runExceptT $ do let newUser = updateFun origUser
+                                 doesUsernameAlreadyExist b newUser origUser
+                                 doesEmailAlreadyExist b newUser origUser
+                                 liftIO $ performUserUpdate b newUser userId
     deleteUser (Backend conn) userId =
         undefined
     authUser conn username password sessionTtl =
@@ -181,7 +186,41 @@ createUser' (Backend conn) user password = do
                 [MySQLInt64U u_id] : _ <- drain $ query_ conn "SELECT LAST_INSERT_ID()"
                 return $ Right (fromIntegral u_id)
 
+doesUsernameAlreadyExist :: Backend -> User -> User -> ExceptT UpdateUserError IO ()
+doesUsernameAlreadyExist (Backend conn) newUser origUser = do
+    when (u_name newUser /= u_name origUser) $ do
+        [MySQLInt64 counter] : _ <- liftIO $ drain $ query conn "SELECT COUNT(lid) FROM login where username = ?;" 
+                                                                [MySQLText $ u_name newUser]
+        when (counter /= 0) $ do
+            throwE UsernameAlreadyExists
+
+doesEmailAlreadyExist :: Backend -> User -> User -> ExceptT UpdateUserError IO ()
+doesEmailAlreadyExist (Backend conn) newUser origUser = do
+    when (u_email newUser /= u_email origUser) $ do
+        [MySQLInt64 counter] : _ <- liftIO $ drain $ query conn "SELECT COUNT(lid) FROM login where lower(email) = lower(?);" 
+                                                                [MySQLText $ u_email newUser]
+        when (counter /= 0) $ do
+            throwE EmailAlreadyExists
+
+performUserUpdate :: Backend -> User -> Int64 -> IO ()
+performUserUpdate (Backend conn) newUser userId = do
+    _ <- execute conn "UPDATE login SET username = ?, email = ?, is_active = ? WHERE lid = ?;" 
+                      [ MySQLText $ u_name newUser
+                      , MySQLText $ u_email newUser
+                      , MySQLInt8 $ if u_active newUser then 1 else 0
+                      , MySQLInt64 userId
+                      ]
+    case u_password newUser of
+          PasswordHash p ->
+              do _ <- execute conn "UPDATE login SET password = ? WHERE lid = ?;" 
+                                   [ MySQLText p
+                                   , MySQLInt64 userId
+                                   ]
+                 return ()
+          _ -> return ()
+
 drain :: IO ([ColumnDef], InputStream [MySQLValue]) -> IO [[MySQLValue]]
 drain action = do
     (_,ist) <- action
     System.IO.Streams.List.toList ist
+

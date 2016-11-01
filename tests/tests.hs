@@ -58,6 +58,7 @@ tests =
     ,   testGetUserIdByName
     ,   testGetUserById
     ,   testListUsers
+    ,   testUpdateUser
     ]
 
 testCreateAndDelete:: TestTree
@@ -132,5 +133,18 @@ testListUsers = testCase "listUsers" $ withDb $ \b -> do
     assertEqual "reversed roundtrip" (hidePassword <$> users) (snd <$> reverse rus2)
     rus3 <- listUsers b (Just (2,4)) (SortAsc UserFieldId) 
     assertEqual "with offsets" (hidePassword <$> (take 4 . drop 2 $ users)) (snd <$> rus3)
+    pure ()
+
+testUpdateUser :: TestTree
+testUpdateUser = testCase "updateUsers" $ withDb $ \b -> do
+    _ <- createTenUsers b
+    Just usrid <- getUserIdByName b "name3"
+    Left UsernameAlreadyExists <- updateUser b usrid (\u -> u { u_name = "name4" })
+    Left EmailAlreadyExists <- updateUser b usrid (\u -> u { u_email = "name4@mail.com" })
+    Just u1 <- getUserById b usrid
+    Right () <- updateUser b usrid (\u -> u { u_name = "namex", u_email = "namex@mail.com" })
+    Just u2 <- getUserById b usrid
+    assertEqual "updated" (hidePassword $ u1 { u_name = "namex", u_email = "namex@mail.com" }) u2
+    Right () <- updateUser b usrid (\u -> u { u_password = PasswordHash "zzz" })
     pure ()
 
