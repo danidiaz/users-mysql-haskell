@@ -3,8 +3,11 @@
 
 module Main where
 
+import Data.Monoid
+import Data.Foldable
 import qualified Data.ByteString.Char8 as Char8
-
+import qualified Data.Text as Text
+import Control.Applicative
 import Control.Exception
 import System.Environment
 
@@ -50,13 +53,61 @@ tests =
     testGroup "Tests" 
     [
         testCreateAndDelete
-    ,   testCountUsers
+    ,   testCountUsers0
+    ,   testCreateUser
+    ,   testGetUserIdByName
+    ,   testListUsers
     ]
 
 testCreateAndDelete:: TestTree
 testCreateAndDelete = testCase "createAndDelete" $ withDb $ \_ -> do return ()
 
-testCountUsers :: TestTree
-testCountUsers = testCase "countUsers" $ withDb $ \b -> do
+testCountUsers0 :: TestTree
+testCountUsers0 = testCase "countUsers0" $ withDb $ \b -> do
     count <- countUsers b
     assertEqual "user count" count 0
+
+testCreateUser :: TestTree
+testCreateUser = testCase "createUser" $ withDb $ \b -> do
+    let user = User "name" "name@mail.com" (PasswordHash "pass") True
+    Right _ <- createUser b user
+    count <- countUsers b
+    assertEqual "user count" count 1
+    Right _ <- createUser b (user { u_name = "name2" , u_email = "name2@mail.com"})
+    count2 <- countUsers b
+    assertEqual "user count" count2 2
+    Left UsernameAndEmailAlreadyTaken <- createUser b user
+    Left EmailAlreadyTaken <- createUser b (user { u_name = "name3" })
+    Left UsernameAlreadyTaken <- createUser b (user { u_email = "name3@mail.com" })
+    let usernopass = User "name4" "name4@mail.com" PasswordHidden True
+    Left InvalidPassword <- createUser b usernopass
+    count3 <- countUsers b
+    assertEqual "user count" count3 2
+    return ()
+
+testGetUserIdByName :: TestTree
+testGetUserIdByName = testCase "getUserId" $ withDb $ \b -> do
+    let user = User "userbyname" "userbyname@mail.com" (PasswordHash "pass") True
+        user2 = User "userbyname2" "userbyname2@mail.com" (PasswordHash "pass") True
+    Right usrid <- createUser b user
+    Right usrid2 <- createUser b user2
+    Just usrid' <- getUserIdByName b "userbyname"
+    assertEqual "ids coincide" usrid usrid'
+    Just usrid'' <- getUserIdByName b "userbyname@mail.com"
+    assertEqual "ids coincide" usrid usrid''
+    Just usrid2' <- getUserIdByName b "userbyname2"
+    assertEqual "ids coincide" usrid2 usrid2'
+    Just usrid2'' <- getUserIdByName b "userbyname2@mail.com"
+    assertEqual "ids coincide" usrid2 usrid2''
+    Nothing <- getUserIdByName b "userbynamexxxxxx"
+    return ()
+
+testListUsers :: TestTree
+testListUsers = testCase "listUsers" $ withDb $ \b -> do
+    for_ [1..10] $ \i -> do
+        let itext = Text.pack . show $ i
+        let user = User ("name"<>itext) ("name"<>itext<>"@mail.com") (PasswordHash "pass") True
+        Right _ <- createUser b user
+        pure ()
+    count <- countUsers b
+    assertEqual "user count" count 10

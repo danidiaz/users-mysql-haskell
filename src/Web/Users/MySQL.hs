@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -142,7 +141,8 @@ getSqlField userField =
 
 createUser' :: Backend -> User -> Text.Text -> IO (Either CreateUserError Int64)
 createUser' (Backend conn) user password = do
-        [MySQLInt64 emailCount] : _ <- drain $ query_ conn "SELECT COUNT(lid) FROM login WHERE lower(email) = lower(?) LIMIT 1;" 
+        [MySQLInt64 emailCount] : _ <- drain $ query conn "SELECT COUNT(lid) FROM login WHERE lower(email) = lower(?) LIMIT 1;" 
+                                                          [MySQLText $ u_email user]
         [MySQLInt64 loginCount] : _ <- drain $ query conn "SELECT COUNT(lid) FROM login WHERE username = ? LIMIT 1;" 
                                                           [MySQLText $ u_name user]
         case (emailCount == 1,loginCount == 1) of
@@ -158,8 +158,8 @@ createUser' (Backend conn) user password = do
                                   , MySQLText $ u_email user
                                   , MySQLInt8 $ if u_active user then 1 else 0
                                   ]
-                [MySQLInt64 u_id] : _ <- drain $ query_ conn "SELECT LAST_INSERT_ID()"
-                return $ Right u_id
+                [MySQLInt64U u_id] : _ <- drain $ query_ conn "SELECT LAST_INSERT_ID()"
+                return $ Right (fromIntegral u_id)
 
 drain :: IO ([ColumnDef], InputStream [MySQLValue]) -> IO [[MySQLValue]]
 drain action = do
