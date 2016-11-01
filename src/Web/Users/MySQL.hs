@@ -74,7 +74,7 @@ instance UserStorageBackend Backend where
         case listToMaybe rs of
             Nothing                 -> return Nothing
             Just (MySQLInt64 uid:_) -> return (Just uid)
-    getUserById (Backend conn) usrid = undefined
+    getUserById = getUserById'
     listUsers = listUsers'
     countUsers (Backend conn) = do
         [MySQLInt64 count] : _ <- drain $ query_ conn "SELECT COUNT(lid) FROM login;"
@@ -111,6 +111,17 @@ instance UserStorageBackend Backend where
 convertUserTuple :: (Text.Text, Password, Text.Text, Bool) -> User
 convertUserTuple (username, password, email, isActive) =
     User username email password isActive
+
+getUserById' :: Backend -> Int64 -> IO (Maybe User)
+getUserById' (Backend conn) usrid = do
+    rs <- drain $ query conn stmt [MySQLInt64 usrid] 
+    case listToMaybe rs of
+        Nothing -> 
+            return Nothing
+        Just [MySQLText username, MySQLText email, MySQLInt8 isActive] -> 
+            return $ Just (convertUserTuple (username, PasswordHidden, email, isActive /= 0))
+    where
+    stmt = "SELECT username, email, is_active FROM login WHERE lid = ? LIMIT 1;"
 
 listUsers' :: Backend -> Maybe (Int64, Int64) -> SortBy UserField -> IO [(UserId Backend, User)]
 listUsers' (Backend conn) mLimit sortField = do

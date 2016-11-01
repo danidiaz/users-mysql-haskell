@@ -56,6 +56,7 @@ tests =
     ,   testCountUsers0
     ,   testCreateUser
     ,   testGetUserIdByName
+    ,   testGetUserById
     ,   testListUsers
     ]
 
@@ -102,14 +103,27 @@ testGetUserIdByName = testCase "getUserId" $ withDb $ \b -> do
     Nothing <- getUserIdByName b "userbynamexxxxxx"
     return ()
 
-testListUsers :: TestTree
-testListUsers = testCase "listUsers" $ withDb $ \b -> do
+createTenUsers :: Backend -> IO [User]
+createTenUsers b = do 
     let suffixes = map (Text.pack . show) [1..10]
         users = map (\i -> User ("name"<>i) ("name"<>i<>"@mail.com") (PasswordHash "pass") True)
                     suffixes
     for_ users $ \u -> do
         Right _ <- createUser b u
         pure ()
+    return users
+
+testGetUserById :: TestTree
+testGetUserById = testCase "getUserById" $ withDb $ \b -> do 
+    users <- createTenUsers b
+    Just u <- getUserById b 3
+    assertEqual "returned user" (hidePassword (users !! 2)) u
+    Nothing <- getUserById b 9999
+    pure ()
+
+testListUsers :: TestTree
+testListUsers = testCase "listUsers" $ withDb $ \b -> do
+    users <- createTenUsers b
     count <- countUsers b
     assertEqual "user count" count 10
     rus1 <- listUsers b Nothing (SortAsc UserFieldId) 
