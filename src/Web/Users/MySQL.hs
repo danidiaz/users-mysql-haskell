@@ -83,8 +83,12 @@ instance UserStorageBackend Backend where
         case u_password user of
             PasswordHash p -> createUser' b user p
             _              -> return $ Left InvalidPassword
-    updateUser (Backend conn) userId updateFun =
-        undefined
+    updateUser b@(Backend conn) userId updateFun =
+        do mUser <- getUserById b userId
+           case mUser of
+             Nothing ->
+                 return $ Left UserDoesntExist
+             Just origUser -> undefined
     deleteUser (Backend conn) userId =
         undefined
     authUser conn username password sessionTtl =
