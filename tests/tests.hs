@@ -104,10 +104,19 @@ testGetUserIdByName = testCase "getUserId" $ withDb $ \b -> do
 
 testListUsers :: TestTree
 testListUsers = testCase "listUsers" $ withDb $ \b -> do
-    for_ [1..10] $ \i -> do
-        let itext = Text.pack . show $ i
-        let user = User ("name"<>itext) ("name"<>itext<>"@mail.com") (PasswordHash "pass") True
-        Right _ <- createUser b user
+    let suffixes = map (Text.pack . show) [1..10]
+        users = map (\i -> User ("name"<>i) ("name"<>i<>"@mail.com") (PasswordHash "pass") True)
+                    suffixes
+    for_ users $ \u -> do
+        Right _ <- createUser b u
         pure ()
     count <- countUsers b
     assertEqual "user count" count 10
+    rus1 <- listUsers b Nothing (SortAsc UserFieldId) 
+    assertEqual "roundtrip" (hidePassword <$> users) (snd <$> rus1)
+    rus2 <- listUsers b Nothing (SortDesc UserFieldId) 
+    assertEqual "reversed roundtrip" (hidePassword <$> users) (snd <$> reverse rus2)
+    rus3 <- listUsers b (Just (2,4)) (SortAsc UserFieldId) 
+    assertEqual "with offsets" (hidePassword <$> (take 4 . drop 2 $ users)) (snd <$> rus3)
+    pure ()
+

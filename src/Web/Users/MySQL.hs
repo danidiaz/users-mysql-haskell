@@ -74,6 +74,7 @@ instance UserStorageBackend Backend where
         case listToMaybe rs of
             Nothing                 -> return Nothing
             Just (MySQLInt64 uid:_) -> return (Just uid)
+    getUserById (Backend conn) usrid = undefined
     listUsers = listUsers'
     countUsers (Backend conn) = do
         [MySQLInt64 count] : _ <- drain $ query_ conn "SELECT COUNT(lid) FROM login;"
@@ -85,6 +86,8 @@ instance UserStorageBackend Backend where
     updateUser (Backend conn) userId updateFun =
         undefined
     deleteUser (Backend conn) userId =
+        undefined
+    authUser conn username password sessionTtl =
         undefined
     createSession (Backend conn) userId sessionTtl =
         undefined
