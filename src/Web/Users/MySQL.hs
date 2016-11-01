@@ -97,7 +97,8 @@ instance UserStorageBackend Backend where
                                  doesEmailAlreadyExist b newUser origUser
                                  liftIO $ performUserUpdate b newUser userId
     deleteUser (Backend conn) userId =
-        undefined
+        do _ <- execute conn "DELETE FROM login WHERE lid = ?;" [MySQLInt64 userId]
+           return ()
     authUser conn username password sessionTtl =
         undefined
     createSession (Backend conn) userId sessionTtl =

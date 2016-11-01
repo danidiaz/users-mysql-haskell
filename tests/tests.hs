@@ -59,6 +59,7 @@ tests =
     ,   testGetUserById
     ,   testListUsers
     ,   testUpdateUser
+    ,   testDeleteUser
     ]
 
 testCreateAndDelete:: TestTree
@@ -147,4 +148,14 @@ testUpdateUser = testCase "updateUsers" $ withDb $ \b -> do
     assertEqual "updated" (hidePassword $ u1 { u_name = "namex", u_email = "namex@mail.com" }) u2
     Right () <- updateUser b usrid (\u -> u { u_password = PasswordHash "zzz" })
     pure ()
+
+testDeleteUser :: TestTree
+testDeleteUser = testCase "deleteUser" $ withDb $ \b -> do
+    _ <- createTenUsers b
+    count1 <- countUsers b
+    Just usrid <- getUserIdByName b "name3"
+    _ <- deleteUser b usrid
+    Nothing <- getUserById b usrid
+    count2 <- countUsers b
+    assertEqual "deleted" (pred count1) count2
 
