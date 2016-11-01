@@ -10,6 +10,8 @@ import Data.String
 import Data.List
 import qualified Data.Text as Text
 import Data.Int(Int64)
+import Control.Monad
+import Control.Monad.Except
 import Web.Users.Types
 import Database.MySQL.Base
 import System.IO.Streams
