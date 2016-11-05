@@ -10,6 +10,10 @@ import Data.String
 import Data.List
 import qualified Data.Text as Text
 import Data.Int(Int64)
+import Data.Time.Clock
+import qualified Data.UUID as UUID
+import qualified Data.UUID.V4 as UUID
+
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
@@ -111,8 +115,9 @@ instance UserStorageBackend Backend where
         undefined
     requestPasswordReset (Backend conn) userId timeToLive =
         undefined
-    requestActivationToken (Backend conn) userId timeToLive =
-        undefined
+    requestActivationToken b userId timeToLive =
+        do token <- createToken b "activation" userId timeToLive
+           return $ ActivationToken token
     activateUser (Backend conn) (ActivationToken token) =
         undefined
     verifyPasswordResetToken (Backend conn) (PasswordResetToken token) =
@@ -225,3 +230,20 @@ drain action = do
     (_,ist) <- action
     System.IO.Streams.List.toList ist
 
+createToken :: Backend -> String -> Int64 -> NominalDiffTime -> IO Text.Text
+createToken (Backend conn) tokenType userId timeToLive = do
+    tok <- Text.pack . UUID.toString <$> UUID.nextRandom
+    _ <- execute conn insertStmt
+                      [MySQLText $ tok 
+                      ,MySQLText $ Text.pack tokenType 
+                      ,MySQLInt64 $ userId 
+                      ,MySQLInt64 $ fromIntegral (convertTtl timeToLive)
+                      ]
+    return tok
+	where
+	insertStmt =  
+	   "INSERT INTO login_token (token, token_type, lid, valid_until)\
+	   \ VALUES (?, ?, ?, timestampadd(SECOND,?,NOW()));"
+
+convertTtl :: NominalDiffTime -> Int
+convertTtl = round

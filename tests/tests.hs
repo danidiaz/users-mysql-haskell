@@ -60,6 +60,7 @@ tests =
     ,   testListUsers
     ,   testUpdateUser
     ,   testDeleteUser
+    ,   testRequestActivationToken
     ]
 
 testCreateAndDelete:: TestTree
@@ -158,4 +159,12 @@ testDeleteUser = testCase "deleteUser" $ withDb $ \b -> do
     Nothing <- getUserById b usrid
     count2 <- countUsers b
     assertEqual "deleted" (pred count1) count2
+
+testRequestActivationToken :: TestTree
+testRequestActivationToken = testCase "requestActivationToken" $ withDb $ \b -> do
+    _ <- createTenUsers b
+    Just usrid <- getUserIdByName b "name3"
+    ActivationToken tok <- requestActivationToken b usrid 3600
+    assertEqual "" 36 (Text.length tok)
+
 
