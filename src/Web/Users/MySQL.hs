@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 module Web.Users.MySQL (Backend,backend) where
 
@@ -33,8 +32,8 @@ backend = Backend
 
 -- NOTE: The implementation has lots of incomplete patterns.
 
-createUsersTable :: Query
-createUsersTable = 
+usersTableSQL :: Query
+usersTableSQL = 
     "CREATE TABLE IF NOT EXISTS login (\
         \ lid             BIGINT NOT NULL AUTO_INCREMENT,\
         \ created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,\
@@ -47,8 +46,8 @@ createUsersTable =
 
 -- http://mysqlserverteam.com/storing-uuid-values-in-mysql-tables/
 -- http://dev.mysql.com/doc/refman/5.7/en/timestamp-initialization.html
-createUserTokenTable :: Query
-createUserTokenTable =
+userTokenTableSQL :: Query
+userTokenTableSQL =
     "CREATE TABLE IF NOT EXISTS login_token (\
         \ltid             BIGINT NOT NULL AUTO_INCREMENT,\
         \token            VARCHAR(36) UNIQUE,\
@@ -60,13 +59,21 @@ createUserTokenTable =
         \CONSTRAINT lt_lid_fk FOREIGN KEY (lid) REFERENCES login(lid) ON DELETE CASCADE\
         \);"
 
+extendTokenSQL :: Query
+extendTokenSQL = 
+     "UPDATE login_token\
+     \ SET valid_until =\
+     \ (CASE WHEN NOW() + '? seconds' > valid_until THEN NOW() + '? seconds' ELSE valid_until END)\
+     \ WHERE token_type = ?\
+     \ AND token = ?;"
+
 instance UserStorageBackend Backend where
 
     type UserId Backend = Int64
 
     initUserBackend (Backend conn) = do
-        _ <- execute_ conn createUsersTable
-        _ <- execute_ conn createUserTokenTable
+        _ <- execute_ conn usersTableSQL
+        _ <- execute_ conn userTokenTableSQL
         return ()
     destroyUserBackend (Backend conn) = do
         _ <- execute_ conn "drop table login_token;"
@@ -103,14 +110,33 @@ instance UserStorageBackend Backend where
     deleteUser (Backend conn) userId =
         do _ <- execute conn "DELETE FROM login WHERE lid = ?;" [MySQLInt64 userId]
            return ()
-    authUser conn username password sessionTtl =
-        undefined
-    createSession (Backend conn) userId sessionTtl =
-        undefined
+    authUser b username password sessionTtl =
+        withAuthUser b username (\user -> verifyPassword password $ u_password user) $ \userId ->
+           SessionId <$> createToken b "session" userId sessionTtl
+    createSession b userId sessionTtl =
+        do mUser <- getUserById b userId
+           case (mUser :: Maybe User) of
+             Nothing -> return Nothing
+             Just _ -> Just . SessionId <$> createToken b "session" userId sessionTtl
     withAuthUser (Backend conn) username authFn action =
-        undefined
+        do resultSet <- drain $ query conn "SELECT lid, username, password, email, is_active FROM login WHERE (username = ? OR email = ?) LIMIT 1;" 
+                                           [MySQLText username
+                                           ,MySQLText username
+                                           ]
+           case resultSet of
+             [ MySQLInt64 userId, MySQLText name, MySQLText password, MySQLText email, MySQLInt8 is_active ] : _ 
+               -> do let user = convertUserTuple (name, PasswordHash password, email, is_active /= 0)
+                     if authFn user
+                        then Just <$> action userId
+                        else return Nothing
+             _ -> return Nothing
     verifySession b (SessionId sessionId) extendTime =
-        undefined
+        do mUser <- getTokenOwner b "session" sessionId
+           case mUser of
+             Nothing -> return Nothing
+             Just userId ->
+                 do extendToken b "session" sessionId extendTime
+                    return (Just userId)
     destroySession b (SessionId sessionId) = deleteToken b "session" sessionId
     requestPasswordReset b userId timeToLive =
         do token <- createToken b "password_reset" userId timeToLive
@@ -285,6 +311,20 @@ deleteToken (Backend conn) tokenType token =
       Just _ ->
           do _ <- execute conn "DELETE FROM login_token WHERE token_type = ? AND token = ?;" 
                                [MySQLText $ Text.pack tokenType
+                               ,MySQLText token
+                               ]
+             return ()
+
+extendToken :: Backend -> String -> Text.Text -> NominalDiffTime -> IO ()
+extendToken (Backend conn) tokenType token timeToLive =
+    case UUID.fromString (Text.unpack token) of
+      Nothing -> return ()
+      Just _  ->
+          do _ <-
+                  execute conn extendTokenSQL 
+                               [MySQLInt64 $ fromIntegral (convertTtl timeToLive) 
+                               ,MySQLInt64 $ fromIntegral (convertTtl timeToLive) 
+                               ,MySQLText $ Text.pack tokenType 
                                ,MySQLText token
                                ]
              return ()
