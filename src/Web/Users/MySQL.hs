@@ -109,21 +109,40 @@ instance UserStorageBackend Backend where
         undefined
     withAuthUser (Backend conn) username authFn action =
         undefined
-    verifySession (Backend conn) (SessionId sessionId) extendTime =
+    verifySession b (SessionId sessionId) extendTime =
         undefined
-    destroySession (Backend conn) (SessionId sessionId) = 
-        undefined
-    requestPasswordReset (Backend conn) userId timeToLive =
-        undefined
+    destroySession b (SessionId sessionId) = deleteToken b "session" sessionId
+    requestPasswordReset b userId timeToLive =
+        do token <- createToken b "password_reset" userId timeToLive
+           return $ PasswordResetToken token
     requestActivationToken b userId timeToLive =
         do token <- createToken b "activation" userId timeToLive
            return $ ActivationToken token
-    activateUser (Backend conn) (ActivationToken token) =
-        undefined
-    verifyPasswordResetToken (Backend conn) (PasswordResetToken token) =
-        undefined
-    applyNewPassword (Backend conn) (PasswordResetToken token) password =
-        undefined
+    activateUser b (ActivationToken token) =
+        do mUser <- getTokenOwner b "activation" token
+           case mUser of
+             Nothing ->
+                 return $ Left TokenInvalid
+             Just userId ->
+                 do _ <-
+                        updateUser b userId $ \user -> user { u_active = True }
+                    deleteToken b "activation" token
+                    return $ Right ()
+    verifyPasswordResetToken b (PasswordResetToken token) =
+        do mUser <- getTokenOwner b "password_reset" token
+           case mUser of
+             Nothing -> return Nothing
+             Just userId -> getUserById b userId
+    applyNewPassword b (PasswordResetToken token) password =
+        do mUser <- getTokenOwner b "password_reset" token
+           case mUser of
+             Nothing ->
+                 return $ Left TokenInvalid
+             Just userId ->
+                 do _ <-
+                        updateUser b userId $ \user -> user { u_password = password }
+                    deleteToken b "password_reset" token
+                    return $ Right ()
 
 convertUserTuple :: (Text.Text, Password, Text.Text, Bool) -> User
 convertUserTuple (username, password, email, isActive) =
@@ -244,6 +263,31 @@ createToken (Backend conn) tokenType userId timeToLive = do
 	insertStmt =  
 	   "INSERT INTO login_token (token, token_type, lid, valid_until)\
 	   \ VALUES (?, ?, ?, timestampadd(SECOND,?,NOW()));"
+
+
+getTokenOwner :: Backend -> String -> Text.Text -> IO (Maybe Int64)
+getTokenOwner (Backend conn) tokenType token =
+    case UUID.fromString (Text.unpack token) of
+      Nothing -> return Nothing
+      Just _  ->
+          do resultSet <- drain $ query conn "SELECT lid FROM login_token WHERE token_type = ? AND token = ? AND valid_until > NOW() LIMIT 1;" 
+                                             [MySQLText $ Text.pack tokenType
+                                             ,MySQLText $ token
+                                             ]
+             case resultSet of
+                 [MySQLInt64 userId] : _ -> return (Just userId)
+                 []                      -> return Nothing
+
+deleteToken :: Backend -> String -> Text.Text -> IO ()
+deleteToken (Backend conn) tokenType token =
+    case UUID.fromString (Text.unpack token) of
+      Nothing   -> return ()
+      Just _ ->
+          do _ <- execute conn "DELETE FROM login_token WHERE token_type = ? AND token = ?;" 
+                               [MySQLText $ Text.pack tokenType
+                               ,MySQLText token
+                               ]
+             return ()
 
 convertTtl :: NominalDiffTime -> Int
 convertTtl = round
