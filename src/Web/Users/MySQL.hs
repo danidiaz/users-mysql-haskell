@@ -138,9 +138,6 @@ instance UserStorageBackend Backend where
                  do extendToken b "session" sessionId extendTime
                     return (Just userId)
     destroySession b (SessionId sessionId) = deleteToken b "session" sessionId
-    requestPasswordReset b userId timeToLive =
-        do token <- createToken b "password_reset" userId timeToLive
-           return $ PasswordResetToken token
     requestActivationToken b userId timeToLive =
         do token <- createToken b "activation" userId timeToLive
            return $ ActivationToken token
@@ -154,6 +151,9 @@ instance UserStorageBackend Backend where
                         updateUser b userId $ \user -> user { u_active = True }
                     deleteToken b "activation" token
                     return $ Right ()
+    requestPasswordReset b userId timeToLive =
+        do token <- createToken b "password_reset" userId timeToLive
+           return $ PasswordResetToken token
     verifyPasswordResetToken b (PasswordResetToken token) =
         do mUser <- getTokenOwner b "password_reset" token
            case mUser of

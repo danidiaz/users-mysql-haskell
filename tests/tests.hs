@@ -60,7 +60,7 @@ tests =
     ,   testListUsers
     ,   testUpdateUser
     ,   testDeleteUser
-    ,   testRequestActivationToken
+    ,   testActivation
     ]
 
 testCreateAndDelete:: TestTree
@@ -109,7 +109,7 @@ testGetUserIdByName = testCase "getUserId" $ withDb $ \b -> do
 createTenUsers :: Backend -> IO [User]
 createTenUsers b = do 
     let suffixes = map (Text.pack . show) [1..10]
-        users = map (\i -> User ("name"<>i) ("name"<>i<>"@mail.com") (PasswordHash "pass") True)
+        users = map (\i -> User ("name"<>i) ("name"<>i<>"@mail.com") (PasswordHash "pass") False)
                     suffixes
     for_ users $ \u -> do
         Right _ <- createUser b u
@@ -160,11 +160,18 @@ testDeleteUser = testCase "deleteUser" $ withDb $ \b -> do
     count2 <- countUsers b
     assertEqual "deleted" (pred count1) count2
 
-testRequestActivationToken :: TestTree
-testRequestActivationToken = testCase "requestActivationToken" $ withDb $ \b -> do
+testActivation :: TestTree
+testActivation = testCase "requestActivationToken" $ withDb $ \b -> do
     _ <- createTenUsers b
-    Just usrid <- getUserIdByName b "name3"
-    ActivationToken tok <- requestActivationToken b usrid 3600
-    assertEqual "" 36 (Text.length tok)
-
+    do Just usrid <- getUserIdByName b "name3"
+       ActivationToken tok <- requestActivationToken b usrid 3600
+       assertEqual "token length" 36 (Text.length tok)
+       Right () <- activateUser b (ActivationToken tok)
+       Just u <- getUserById b usrid
+       assertEqual "activate successful" True (u_active u)
+    do Just usrid <- getUserIdByName b "name4"
+       ActivationToken tok <- requestActivationToken b usrid 3600
+       assertEqual "token length" 36 (Text.length tok)
+       Left TokenInvalid <- activateUser b (ActivationToken "bogus activation token")
+       return ()
 
