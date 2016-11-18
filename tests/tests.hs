@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE NumDecimals #-}
 
 module Main where
 
@@ -9,6 +10,7 @@ import qualified Data.ByteString.Char8 as Char8
 import qualified Data.Text as Text
 import Control.Applicative
 import Control.Exception
+import Control.Concurrent
 import System.Environment
 
 import Database.MySQL.Base
@@ -61,6 +63,8 @@ tests =
     ,   testUpdateUser
     ,   testDeleteUser
     ,   testActivation
+    ,   testPasswordReset
+    ,   testAuth
     ]
 
 testCreateAndDelete:: TestTree
@@ -168,10 +172,50 @@ testActivation = testCase "requestActivationToken" $ withDb $ \b -> do
        assertEqual "token length" 36 (Text.length tok)
        Right () <- activateUser b (ActivationToken tok)
        Just u <- getUserById b usrid
-       assertEqual "activate successful" True (u_active u)
+       assertBool "is active" (u_active u)
     do Just usrid <- getUserIdByName b "name4"
        ActivationToken tok <- requestActivationToken b usrid 3600
        assertEqual "token length" 36 (Text.length tok)
        Left TokenInvalid <- activateUser b (ActivationToken "bogus activation token")
        return ()
+    do Just usrid <- getUserIdByName b "name5"
+       ActivationToken tok <- requestActivationToken b usrid 3600
+       assertEqual "token length" 36 (Text.length tok)
+       Right ()          <- activateUser b (ActivationToken tok)
+       Left TokenInvalid <- activateUser b (ActivationToken tok)
+       return ()
 
+testPasswordReset :: TestTree
+testPasswordReset = testCase "passwordReset" $ withDb $ \b -> do
+    _ <- createTenUsers b
+    do let name = "name3"
+       Just usrid <- getUserIdByName b name
+       tok <- requestPasswordReset b usrid 10
+       Just usr <- verifyPasswordResetToken b tok
+       assertEqual "verification user" name (u_name usr) 
+       return ()
+    do let name = "name4"
+       Just usrid <- getUserIdByName b name
+       tok <- requestPasswordReset b usrid 1
+       threadDelay 3e6
+       Nothing <- verifyPasswordResetToken b tok
+       return ()
+    do let name = "name5"
+       Just usrid <- getUserIdByName b name
+       tok <- requestPasswordReset b usrid 10
+       Right () <- applyNewPassword b tok (PasswordHash "newpasswd")
+       Nothing <- verifyPasswordResetToken b tok
+       return ()
+
+testAuth :: TestTree
+testAuth = testCase "testAuth" $ withDb $ \b -> do
+    _ <- createTenUsers b
+    let name = "name3"
+        passwd = PasswordPlain "foooo"
+    Just usrid <- getUserIdByName b name
+    tok <- requestPasswordReset b usrid 10
+    Right () <- applyNewPassword b tok (makePassword passwd)
+    Just sessId <- authUser b name passwd 10
+    -- Nothing <- verifySession b (SessionId "bloxoxs") 10 
+    Just usrid' <- verifySession b sessId 10 
+    return ()
