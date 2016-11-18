@@ -1,11 +1,11 @@
 # users-mysql-haskell
 
-This library is a mysql-haskell backend for the "users" library. 
+This is a [mysql-haskell](http://hackage.haskell.org/package/mysql-haskell) backend for the [users](http://hackage.haskell.org/package/users) library. 
 
-# Differences with other "users" backends
+# Differences with other backends
 
 This package uses a newtype instead of defining an orphan instance for
-UserStorageBackend.
+[UserStorageBackend](https://www.stackage.org/haddock/lts-7.9/users-0.5.0.0/Web-Users-Types.html#t:UserStorageBackend).
 
 This means that the user will need to perform some manual wrapping and
 unwrapping.

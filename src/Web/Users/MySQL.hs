@@ -12,16 +12,15 @@ import Data.Int(Int64)
 import Data.Time.Clock
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
-
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
-import Web.Users.Types
-import Database.MySQL.Base
 import System.IO.Streams
 import System.IO.Streams.List
+import Web.Users.Types
+import Database.MySQL.Base
 
-newtype Backend = Backend { getConn :: MySQLConn }
+newtype Backend = Backend MySQLConn
 
 backend :: MySQLConn -> Backend
 backend = Backend
@@ -63,7 +62,7 @@ extendTokenSQL :: Query
 extendTokenSQL = 
      "UPDATE login_token\
      \ SET valid_until =\
-     \ (CASE WHEN NOW() + '? seconds' > valid_until THEN NOW() + '? seconds' ELSE valid_until END)\
+     \ (CASE WHEN (NOW() + INTERVAL ? second) > valid_until THEN (NOW() + INTERVAL ? second) ELSE valid_until END)\
      \ WHERE token_type = ?\
      \ AND token = ?;"
 
@@ -279,16 +278,16 @@ createToken :: Backend -> String -> Int64 -> NominalDiffTime -> IO Text.Text
 createToken (Backend conn) tokenType userId timeToLive = do
     tok <- Text.pack . UUID.toString <$> UUID.nextRandom
     _ <- execute conn insertStmt
-                      [MySQLText $ tok 
-                      ,MySQLText $ Text.pack tokenType 
-                      ,MySQLInt64 $ userId 
-                      ,MySQLInt64 $ fromIntegral (convertTtl timeToLive)
+                      [MySQLText   $ tok 
+                      ,MySQLText   $ Text.pack tokenType 
+                      ,MySQLInt64  $ userId 
+                      ,MySQLInt64  $ fromIntegral (convertTtl timeToLive)
                       ]
     return tok
-	where
-	insertStmt =  
-	   "INSERT INTO login_token (token, token_type, lid, valid_until)\
-	   \ VALUES (?, ?, ?, timestampadd(SECOND,?,NOW()));"
+    where
+    insertStmt =  
+       "INSERT INTO login_token (token, token_type, lid, valid_until)\
+       \ VALUES (?, ?, ?, timestampadd(SECOND,?,NOW()));"
 
 
 getTokenOwner :: Backend -> String -> Text.Text -> IO (Maybe Int64)
@@ -322,10 +321,10 @@ extendToken (Backend conn) tokenType token timeToLive =
       Just _  ->
           do _ <-
                   execute conn extendTokenSQL 
-                               [MySQLInt64 $ fromIntegral (convertTtl timeToLive) 
-                               ,MySQLInt64 $ fromIntegral (convertTtl timeToLive) 
-                               ,MySQLText $ Text.pack tokenType 
-                               ,MySQLText token
+                               [MySQLInt64  $ fromIntegral (convertTtl timeToLive) 
+                               ,MySQLInt64  $ fromIntegral (convertTtl timeToLive) 
+                               ,MySQLText   $ Text.pack tokenType 
+                               ,MySQLText   $ token
                                ]
              return ()
 

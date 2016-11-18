@@ -8,7 +8,6 @@ import Data.Monoid
 import Data.Foldable
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.Text as Text
-import Control.Applicative
 import Control.Exception
 import Control.Concurrent
 import System.Environment
@@ -65,6 +64,7 @@ tests =
     ,   testActivation
     ,   testPasswordReset
     ,   testAuth
+    ,   testHousekeep
     ]
 
 testCreateAndDelete:: TestTree
@@ -112,7 +112,7 @@ testGetUserIdByName = testCase "getUserId" $ withDb $ \b -> do
 
 createTenUsers :: Backend -> IO [User]
 createTenUsers b = do 
-    let suffixes = map (Text.pack . show) [1..10]
+    let suffixes = map (Text.pack . show) [(1::Integer)..10]
         users = map (\i -> User ("name"<>i) ("name"<>i<>"@mail.com") (PasswordHash "pass") False)
                     suffixes
     for_ users $ \u -> do
@@ -215,7 +215,28 @@ testAuth = testCase "testAuth" $ withDb $ \b -> do
     Just usrid <- getUserIdByName b name
     tok <- requestPasswordReset b usrid 10
     Right () <- applyNewPassword b tok (makePassword passwd)
-    Just sessId <- authUser b name passwd 10
-    -- Nothing <- verifySession b (SessionId "bloxoxs") 10 
-    Just usrid' <- verifySession b sessId 10 
+    do Just sessId <- authUser b name passwd 10
+       Nothing <- verifySession b (SessionId "bloxoxs") 10 
+       Just _ <- verifySession b sessId 10 
+       return ()
+    do Just sessId <- authUser b name passwd 10
+       destroySession b sessId
+       Nothing <- verifySession b sessId 10 
+       return ()
+    do Just sessId <- authUser b name passwd 1
+       threadDelay 3e6
+       Nothing <- verifySession b sessId 10 
+       return ()
+    do Just sessId <- authUser b name passwd 3
+       threadDelay 2e6
+       Just _ <- verifySession b sessId 10 
+       threadDelay 4e6
+       Just _ <- verifySession b sessId 10 
+       return ()
+    return ()
+
+testHousekeep :: TestTree
+testHousekeep = testCase "testHousekeep" $ withDb $ \b -> do
+    _ <- createTenUsers b
+    housekeepBackend b
     return ()
