@@ -8,7 +8,6 @@ import Data.Monoid
 import Data.Foldable
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.Text as Text
-import Control.Exception
 import Control.Concurrent
 import System.Environment
 
@@ -29,54 +28,54 @@ test_mysql_user = "TEST_MYSQL_USER"
 test_mysql_password = "TEST_MYSQL_PASSWORD"
 
 -- https://dev.mysql.com/doc/refman/5.5/en/implicit-commit.html
-withConn :: (Backend -> IO a) -> IO a
-withConn f = do
+doConnect :: IO MySQLConn
+doConnect = do
     connInfo <- ConnectInfo <$>                 getEnv test_mysql_host
                             <*> (read       <$> getEnv test_mysql_port)
                             <*> (Char8.pack <$> getEnv test_mysql_database)
                             <*> (Char8.pack <$> getEnv test_mysql_user)
                             <*> (Char8.pack <$> getEnv test_mysql_password)
-    bracket (connect connInfo) 
-            close 
-            (f . backend)
+    connect connInfo
 
-withDb :: (Backend -> IO a) -> IO a
-withDb f = withConn $ \b -> do initUserBackend b
-                               r <- f b
-                               destroyUserBackend b
-                               return r
+makeTest :: IO MySQLConn -> TestName -> (Backend -> Assertion) -> TestTree
+makeTest connMaker tname f = withResource (do b <- backend <$> connMaker 
+                                              initUserBackend b
+                                              return b) 
+                                          destroyUserBackend
+                                          (\action -> testCase tname $ action >>= f)
 
 main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = 
-    testGroup "Tests" 
-    [
-        testCreateAndDelete
-    ,   testCountUsers0
-    ,   testCreateUser
-    ,   testGetUserIdByName
-    ,   testGetUserById
-    ,   testListUsers
-    ,   testUpdateUser
-    ,   testDeleteUser
-    ,   testActivation
-    ,   testPasswordReset
-    ,   testAuth
-    ,   testHousekeep
-    ]
+tests = withResource doConnect
+                     close
+                     (\connio -> let mk = makeTest connio
+                                 in  testGroup "Tests" 
+                                     [ mk "testCreateAndDelete" testCreateAndDelete
+                                     , mk "testCountUsers0" testCountUsers0
+                                     , mk "testCreateUser" testCreateUser
+                                     , mk "testGetUserIdByName" testGetUserIdByName
+                                     , mk "testGetUserById" testGetUserById
+                                     , mk "testListUsers" testListUsers
+                                     , mk "testUpdateUser" testUpdateUser
+                                     , mk "testDeleteUser" testDeleteUser
+                                     , mk "testActivation" testActivation
+                                     , mk "testPasswordReset" testPasswordReset
+                                     , mk "testAuth" testAuth
+                                     , mk "testHousekeep" testHousekeep
+                                     ])
 
-testCreateAndDelete:: TestTree
-testCreateAndDelete = testCase "createAndDelete" $ withDb $ \_ -> do return ()
+testCreateAndDelete:: Backend -> Assertion
+testCreateAndDelete _ = return ()
 
-testCountUsers0 :: TestTree
-testCountUsers0 = testCase "countUsers0" $ withDb $ \b -> do
+testCountUsers0 :: Backend -> Assertion
+testCountUsers0 b = do
     count <- countUsers b
     assertEqual "user count" count 0
 
-testCreateUser :: TestTree
-testCreateUser = testCase "createUser" $ withDb $ \b -> do
+testCreateUser :: Backend -> Assertion
+testCreateUser b = do
     let user = User "name" "name@mail.com" (PasswordHash "pass") True
     Right _ <- createUser b user
     count <- countUsers b
@@ -93,8 +92,8 @@ testCreateUser = testCase "createUser" $ withDb $ \b -> do
     assertEqual "user count" count3 2
     return ()
 
-testGetUserIdByName :: TestTree
-testGetUserIdByName = testCase "getUserId" $ withDb $ \b -> do
+testGetUserIdByName :: Backend -> Assertion
+testGetUserIdByName b = do
     let user = User "userbyname" "userbyname@mail.com" (PasswordHash "pass") True
         user2 = User "userbyname2" "userbyname2@mail.com" (PasswordHash "pass") True
     Right usrid <- createUser b user
@@ -120,16 +119,16 @@ createTenUsers b = do
         pure ()
     return users
 
-testGetUserById :: TestTree
-testGetUserById = testCase "getUserById" $ withDb $ \b -> do 
+testGetUserById :: Backend -> Assertion
+testGetUserById b = do
     users <- createTenUsers b
     Just u <- getUserById b 3
     assertEqual "returned user" (hidePassword (users !! 2)) u
     Nothing <- getUserById b 9999
     pure ()
 
-testListUsers :: TestTree
-testListUsers = testCase "listUsers" $ withDb $ \b -> do
+testListUsers :: Backend -> Assertion
+testListUsers b = do
     users <- createTenUsers b
     count <- countUsers b
     assertEqual "user count" count 10
@@ -141,8 +140,8 @@ testListUsers = testCase "listUsers" $ withDb $ \b -> do
     assertEqual "with offsets" (hidePassword <$> (take 4 . drop 2 $ users)) (snd <$> rus3)
     pure ()
 
-testUpdateUser :: TestTree
-testUpdateUser = testCase "updateUsers" $ withDb $ \b -> do
+testUpdateUser :: Backend -> Assertion
+testUpdateUser b = do
     _ <- createTenUsers b
     Just usrid <- getUserIdByName b "name3"
     Left UsernameAlreadyExists <- updateUser b usrid (\u -> u { u_name = "name4" })
@@ -154,8 +153,8 @@ testUpdateUser = testCase "updateUsers" $ withDb $ \b -> do
     Right () <- updateUser b usrid (\u -> u { u_password = PasswordHash "zzz" })
     pure ()
 
-testDeleteUser :: TestTree
-testDeleteUser = testCase "deleteUser" $ withDb $ \b -> do
+testDeleteUser :: Backend -> Assertion
+testDeleteUser b = do
     _ <- createTenUsers b
     count1 <- countUsers b
     Just usrid <- getUserIdByName b "name3"
@@ -164,8 +163,8 @@ testDeleteUser = testCase "deleteUser" $ withDb $ \b -> do
     count2 <- countUsers b
     assertEqual "deleted" (pred count1) count2
 
-testActivation :: TestTree
-testActivation = testCase "requestActivationToken" $ withDb $ \b -> do
+testActivation :: Backend -> Assertion
+testActivation b = do
     _ <- createTenUsers b
     do Just usrid <- getUserIdByName b "name3"
        ActivationToken tok <- requestActivationToken b usrid 3600
@@ -185,8 +184,8 @@ testActivation = testCase "requestActivationToken" $ withDb $ \b -> do
        Left TokenInvalid <- activateUser b (ActivationToken tok)
        return ()
 
-testPasswordReset :: TestTree
-testPasswordReset = testCase "passwordReset" $ withDb $ \b -> do
+testPasswordReset :: Backend -> Assertion
+testPasswordReset b = do
     _ <- createTenUsers b
     do let name = "name3"
        Just usrid <- getUserIdByName b name
@@ -207,8 +206,8 @@ testPasswordReset = testCase "passwordReset" $ withDb $ \b -> do
        Nothing <- verifyPasswordResetToken b tok
        return ()
 
-testAuth :: TestTree
-testAuth = testCase "testAuth" $ withDb $ \b -> do
+testAuth :: Backend -> Assertion
+testAuth b = do
     _ <- createTenUsers b
     let name = "name3"
         passwd = PasswordPlain "foooo"
@@ -235,8 +234,8 @@ testAuth = testCase "testAuth" $ withDb $ \b -> do
        return ()
     return ()
 
-testHousekeep :: TestTree
-testHousekeep = testCase "testHousekeep" $ withDb $ \b -> do
+testHousekeep :: Backend -> Assertion
+testHousekeep b = do
     _ <- createTenUsers b
     housekeepBackend b
     return ()
