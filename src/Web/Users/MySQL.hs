@@ -90,20 +90,34 @@ insertTokenSQL =
     "INSERT INTO login_token (token, token_type, lid, valid_until)\
     \ VALUES (?, ?, ?, timestampadd(SECOND,?,NOW()));"
 
+-- http://stackoverflow.com/questions/3626645/determining-if-mysql-table-index-exists-before-creating
+indexExistsSQL :: Query
+indexExistsSQL = 
+    "SELECT EXISTS (SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE\
+    \ TABLE_SCHEMA = DATABASE() AND\
+    \ TABLE_NAME = ? AND \
+    \ INDEX_NAME = ?);"
+
 instance UserStorageBackend Backend where
 
     type UserId Backend = Int64
 
     initUserBackend (Backend conn) = do
         _ <- execute_ conn usersTableSQL
-        _ <- execute_ conn createUserNameIndexSQL
-        _ <- execute_ conn createEmailIndexSQL
+        unlessM (doesIndexExist conn "login" "l_username") $ do
+            _ <- execute_ conn createUserNameIndexSQL
+            return ()
+        unlessM (doesIndexExist conn "login" "l_email") $ do
+            _ <- execute_ conn createEmailIndexSQL
+            return ()
         _ <- execute_ conn userTokenTableSQL
-        _ <- execute_ conn createTokenIndexSQL
+        unlessM (doesIndexExist conn "login_token" "lt_token") $ do
+            _ <- execute_ conn createTokenIndexSQL
+            return ()
         return ()
     destroyUserBackend (Backend conn) = do
-        _ <- execute_ conn "drop table login_token;"
-        _ <- execute_ conn "drop table login;"
+        _ <- execute_ conn "drop table if exists login_token;"
+        _ <- execute_ conn "drop table if exists login;"
         return ()
     housekeepBackend (Backend conn) = do
         _ <- execute_ conn "DELETE FROM login_token WHERE valid_until < NOW();"
@@ -359,6 +373,18 @@ extendToken (Backend conn) tokenType token timeToLive =
                                ,MySQLText   $ token
                                ]
              return ()
+
+doesIndexExist :: MySQLConn -> Text.Text -> Text.Text -> IO Bool
+doesIndexExist conn tableName indexName = do
+    [MySQLInt64 is_active] : _ <- drain $ query conn 
+                                                indexExistsSQL
+                                                [MySQLText tableName
+                                                ,MySQLText indexName
+                                                ]
+    return (is_active /= 0)
+
+unlessM :: Monad m => m Bool -> m () -> m ()
+unlessM mbool action = mbool >>= flip unless action
 
 convertTtl :: NominalDiffTime -> Int
 convertTtl = round
