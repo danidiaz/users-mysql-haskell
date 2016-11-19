@@ -1,5 +1,5 @@
 name:                users-mysql-haskell
-version:             0.5.0.1
+version:             0.5.0.2
 synopsis:            A mysql-haskell backend for the users library.
 description:         A mysql-haskell backend for the users library.
 license:             BSD3
@@ -11,6 +11,9 @@ category:            Web
 build-type:          Simple
 extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
+
+Extra-Source-Files:
+    README.md
 
 source-repository head
   type: git
