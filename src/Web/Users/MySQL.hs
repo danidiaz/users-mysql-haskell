@@ -77,13 +77,13 @@ createTokenIndexSQL = "create index lt_token on login_token (token);"
 
 userByNameSQL :: Query
 userByNameSQL = 
-	"SELECT lid, username, password, email, is_active \
-	\ FROM login WHERE (username = ? OR email = ?) LIMIT 1;"
+    "SELECT lid, username, password, email, is_active \
+    \ FROM login WHERE (username = ? OR email = ?) LIMIT 1;"
 
 tokenIdSQL :: Query
 tokenIdSQL = 
-	"SELECT lid FROM login_token WHERE token_type = ? \
-	\ AND token = ? AND valid_until > NOW() LIMIT 1;"
+    "SELECT lid FROM login_token WHERE token_type = ? \
+    \ AND token = ? AND valid_until > NOW() LIMIT 1;"
 
 insertTokenSQL :: Query
 insertTokenSQL = 
@@ -146,10 +146,10 @@ instance UserStorageBackend Backend where
              Just _ -> Just . SessionId <$> createToken b "session" userId sessionTtl
     withAuthUser (Backend conn) username authFn action =
         do resultSet <- drain $ query conn 
-								 	  userByNameSQL
-									  [MySQLText username
-									  ,MySQLText username
-									  ]
+                                      userByNameSQL
+                                      [MySQLText username
+                                      ,MySQLText username
+                                      ]
            case resultSet of
              [ MySQLInt64 userId, MySQLText name, MySQLText password, MySQLText email, MySQLInt8 is_active ] : _ 
                -> do let user = convertUserTuple (name, PasswordHash password, email, is_active /= 0)
@@ -271,7 +271,7 @@ doesUsernameAlreadyExist :: Backend -> User -> User -> ExceptT UpdateUserError I
 doesUsernameAlreadyExist (Backend conn) newUser origUser = do
     when (u_name newUser /= u_name origUser) $ do
         [MySQLInt64 counter] : _ <- liftIO $ drain $ query conn 
-														   "SELECT COUNT(lid) FROM login where username = ?;" 
+                                                           "SELECT COUNT(lid) FROM login where username = ?;" 
                                                            [MySQLText $ u_name newUser]
         when (counter /= 0) $ do
             throwE UsernameAlreadyExists
@@ -280,7 +280,7 @@ doesEmailAlreadyExist :: Backend -> User -> User -> ExceptT UpdateUserError IO (
 doesEmailAlreadyExist (Backend conn) newUser origUser = do
     when (u_email newUser /= u_email origUser) $ do
         [MySQLInt64 counter] : _ <- liftIO $ drain $ query conn 
-														   "SELECT COUNT(lid) FROM login where lower(email) = lower(?);" 
+                                                           "SELECT COUNT(lid) FROM login where lower(email) = lower(?);" 
                                                            [MySQLText $ u_email newUser]
         when (counter /= 0) $ do
             throwE EmailAlreadyExists
@@ -313,7 +313,7 @@ createToken :: Backend -> String -> Int64 -> NominalDiffTime -> IO Text.Text
 createToken (Backend conn) tokenType userId timeToLive = do
     tok <- Text.pack . UUID.toString <$> UUID.nextRandom
     _ <- execute conn 
-				 insertTokenSQL
+                 insertTokenSQL
                  [MySQLText   $ tok 
                  ,MySQLText   $ Text.pack tokenType 
                  ,MySQLInt64  $ userId 
@@ -327,7 +327,7 @@ getTokenOwner (Backend conn) tokenType token =
       Nothing -> return Nothing
       Just _  ->
           do resultSet <- drain $ query conn 
-										tokenIdSQL
+                                        tokenIdSQL
                                         [MySQLText $ Text.pack tokenType
                                         ,MySQLText $ token
                                         ]
