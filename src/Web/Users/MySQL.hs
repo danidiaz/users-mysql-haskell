@@ -66,13 +66,40 @@ extendTokenSQL =
      \ WHERE token_type = ?\
      \ AND token = ?;"
 
+createUserNameIndexSQL :: Query
+createUserNameIndexSQL = "create index l_username on login (username);"
+
+createEmailIndexSQL :: Query
+createEmailIndexSQL = "create index l_email on login (email);"
+
+createTokenIndexSQL :: Query
+createTokenIndexSQL = "create index lt_token on login_token (token);"
+
+userByNameSQL :: Query
+userByNameSQL = 
+	"SELECT lid, username, password, email, is_active \
+	\ FROM login WHERE (username = ? OR email = ?) LIMIT 1;"
+
+tokenIdSQL :: Query
+tokenIdSQL = 
+	"SELECT lid FROM login_token WHERE token_type = ? \
+	\ AND token = ? AND valid_until > NOW() LIMIT 1;"
+
+insertTokenSQL :: Query
+insertTokenSQL = 
+    "INSERT INTO login_token (token, token_type, lid, valid_until)\
+    \ VALUES (?, ?, ?, timestampadd(SECOND,?,NOW()));"
+
 instance UserStorageBackend Backend where
 
     type UserId Backend = Int64
 
     initUserBackend (Backend conn) = do
         _ <- execute_ conn usersTableSQL
+        _ <- execute_ conn createUserNameIndexSQL
+        _ <- execute_ conn createEmailIndexSQL
         _ <- execute_ conn userTokenTableSQL
+        _ <- execute_ conn createTokenIndexSQL
         return ()
     destroyUserBackend (Backend conn) = do
         _ <- execute_ conn "drop table login_token;"
@@ -118,10 +145,11 @@ instance UserStorageBackend Backend where
              Nothing -> return Nothing
              Just _ -> Just . SessionId <$> createToken b "session" userId sessionTtl
     withAuthUser (Backend conn) username authFn action =
-        do resultSet <- drain $ query conn "SELECT lid, username, password, email, is_active FROM login WHERE (username = ? OR email = ?) LIMIT 1;" 
-                                           [MySQLText username
-                                           ,MySQLText username
-                                           ]
+        do resultSet <- drain $ query conn 
+								 	  userByNameSQL
+									  [MySQLText username
+									  ,MySQLText username
+									  ]
            case resultSet of
              [ MySQLInt64 userId, MySQLText name, MySQLText password, MySQLText email, MySQLInt8 is_active ] : _ 
                -> do let user = convertUserTuple (name, PasswordHash password, email, is_active /= 0)
@@ -216,10 +244,12 @@ getSqlField userField =
 
 createUser' :: Backend -> User -> Text.Text -> IO (Either CreateUserError Int64)
 createUser' (Backend conn) user password = do
-        [MySQLInt64 emailCount] : _ <- drain $ query conn "SELECT COUNT(lid) FROM login WHERE lower(email) = lower(?) LIMIT 1;" 
-                                                          [MySQLText $ u_email user]
-        [MySQLInt64 loginCount] : _ <- drain $ query conn "SELECT COUNT(lid) FROM login WHERE username = ? LIMIT 1;" 
-                                                          [MySQLText $ u_name user]
+        [MySQLInt64 emailCount] : _ <- drain $ query conn 
+                                                     "SELECT COUNT(lid) FROM login WHERE lower(email) = lower(?) LIMIT 1;" 
+                                                     [MySQLText $ u_email user]
+        [MySQLInt64 loginCount] : _ <- drain $ query conn 
+                                                     "SELECT COUNT(lid) FROM login WHERE username = ? LIMIT 1;" 
+                                                     [MySQLText $ u_name user]
         case (emailCount == 1,loginCount == 1) of
             (True, True)   -> return $ Left UsernameAndEmailAlreadyTaken
             (True, False)  -> return $ Left EmailAlreadyTaken
@@ -227,45 +257,50 @@ createUser' (Backend conn) user password = do
             -- http://stackoverflow.com/questions/17112852/get-the-new-record-primary-key-id-from-mysql-insert-query
             -- http://dev.mysql.com/doc/refman/5.7/en/getting-unique-id.html
             (False, False) -> do
-                _ <- execute conn "INSERT INTO login (username, password, email, is_active) VALUES (?, ?, ?, ?)"
-                                  [ MySQLText $ u_name user
-                                  , MySQLText $ password
-                                  , MySQLText $ u_email user
-                                  , MySQLInt8 $ if u_active user then 1 else 0
-                                  ]
+                _ <- execute conn 
+                             "INSERT INTO login (username, password, email, is_active) VALUES (?, ?, ?, ?)"
+                             [ MySQLText $ u_name user
+                             , MySQLText $ password
+                             , MySQLText $ u_email user
+                             , MySQLInt8 $ if u_active user then 1 else 0
+                             ]
                 [MySQLInt64U u_id] : _ <- drain $ query_ conn "SELECT LAST_INSERT_ID()"
                 return $ Right (fromIntegral u_id)
 
 doesUsernameAlreadyExist :: Backend -> User -> User -> ExceptT UpdateUserError IO ()
 doesUsernameAlreadyExist (Backend conn) newUser origUser = do
     when (u_name newUser /= u_name origUser) $ do
-        [MySQLInt64 counter] : _ <- liftIO $ drain $ query conn "SELECT COUNT(lid) FROM login where username = ?;" 
-                                                                [MySQLText $ u_name newUser]
+        [MySQLInt64 counter] : _ <- liftIO $ drain $ query conn 
+														   "SELECT COUNT(lid) FROM login where username = ?;" 
+                                                           [MySQLText $ u_name newUser]
         when (counter /= 0) $ do
             throwE UsernameAlreadyExists
 
 doesEmailAlreadyExist :: Backend -> User -> User -> ExceptT UpdateUserError IO ()
 doesEmailAlreadyExist (Backend conn) newUser origUser = do
     when (u_email newUser /= u_email origUser) $ do
-        [MySQLInt64 counter] : _ <- liftIO $ drain $ query conn "SELECT COUNT(lid) FROM login where lower(email) = lower(?);" 
-                                                                [MySQLText $ u_email newUser]
+        [MySQLInt64 counter] : _ <- liftIO $ drain $ query conn 
+														   "SELECT COUNT(lid) FROM login where lower(email) = lower(?);" 
+                                                           [MySQLText $ u_email newUser]
         when (counter /= 0) $ do
             throwE EmailAlreadyExists
 
 performUserUpdate :: Backend -> User -> Int64 -> IO ()
 performUserUpdate (Backend conn) newUser userId = do
-    _ <- execute conn "UPDATE login SET username = ?, email = ?, is_active = ? WHERE lid = ?;" 
-                      [ MySQLText $ u_name newUser
-                      , MySQLText $ u_email newUser
-                      , MySQLInt8 $ if u_active newUser then 1 else 0
-                      , MySQLInt64 userId
-                      ]
+    _ <- execute conn 
+                 "UPDATE login SET username = ?, email = ?, is_active = ? WHERE lid = ?;" 
+                 [ MySQLText $ u_name newUser
+                 , MySQLText $ u_email newUser
+                 , MySQLInt8 $ if u_active newUser then 1 else 0
+                 , MySQLInt64 userId
+                 ]
     case u_password newUser of
           PasswordHash p ->
-              do _ <- execute conn "UPDATE login SET password = ? WHERE lid = ?;" 
-                                   [ MySQLText p
-                                   , MySQLInt64 userId
-                                   ]
+              do _ <- execute conn 
+                              "UPDATE login SET password = ? WHERE lid = ?;" 
+                              [ MySQLText p
+                              , MySQLInt64 userId
+                              ]
                  return ()
           _ -> return ()
 
@@ -277,28 +312,25 @@ drain action = do
 createToken :: Backend -> String -> Int64 -> NominalDiffTime -> IO Text.Text
 createToken (Backend conn) tokenType userId timeToLive = do
     tok <- Text.pack . UUID.toString <$> UUID.nextRandom
-    _ <- execute conn insertStmt
-                      [MySQLText   $ tok 
-                      ,MySQLText   $ Text.pack tokenType 
-                      ,MySQLInt64  $ userId 
-                      ,MySQLInt64  $ fromIntegral (convertTtl timeToLive)
-                      ]
+    _ <- execute conn 
+				 insertTokenSQL
+                 [MySQLText   $ tok 
+                 ,MySQLText   $ Text.pack tokenType 
+                 ,MySQLInt64  $ userId 
+                 ,MySQLInt64  $ fromIntegral (convertTtl timeToLive)
+                 ]
     return tok
-    where
-    insertStmt =  
-       "INSERT INTO login_token (token, token_type, lid, valid_until)\
-       \ VALUES (?, ?, ?, timestampadd(SECOND,?,NOW()));"
-
 
 getTokenOwner :: Backend -> String -> Text.Text -> IO (Maybe Int64)
 getTokenOwner (Backend conn) tokenType token =
     case UUID.fromString (Text.unpack token) of
       Nothing -> return Nothing
       Just _  ->
-          do resultSet <- drain $ query conn "SELECT lid FROM login_token WHERE token_type = ? AND token = ? AND valid_until > NOW() LIMIT 1;" 
-                                             [MySQLText $ Text.pack tokenType
-                                             ,MySQLText $ token
-                                             ]
+          do resultSet <- drain $ query conn 
+										tokenIdSQL
+                                        [MySQLText $ Text.pack tokenType
+                                        ,MySQLText $ token
+                                        ]
              case resultSet of
                  [MySQLInt64 userId] : _ -> return (Just userId)
                  []                      -> return Nothing
